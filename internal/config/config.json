@@ -1,0 +1,7 @@
+{
+    "client_id": "1d307a1e2ef060fc21718c0db90e28b8",
+    "personal_token": "#env:PERSONAL_TOKEN",
+    "account_id": "dcec3efb-ab1e-4ad4-a559-08998b5628c8",
+    "addr": ":8080",
+    "api_url": "https://api.labs.livechatinc.com/v3.6"
+}

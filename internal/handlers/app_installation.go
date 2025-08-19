@@ -9,12 +9,12 @@ import (
 )
 
 type AppInstallationHandler struct {
-	LiveChatSDK *sdk.LivechatSDKClient
+	livechatSDK *sdk.LivechatSDKClient
 }
 
 func NewAppInstallationHandler(liveChatSDK *sdk.LivechatSDKClient) *AppInstallationHandler {
 	return &AppInstallationHandler{
-		LiveChatSDK: liveChatSDK,
+		livechatSDK: liveChatSDK,
 	}
 }
 
@@ -31,7 +31,7 @@ func (h *AppInstallationHandler) AppInstallation(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusAccepted)
 
 	if webhook.Event == "application_installed" {
-		botResponse, err := h.LiveChatSDK.CreateBot("Zuczkows-Bot-007")
+		botResponse, err := h.livechatSDK.CreateBot("Zuczkows-Bot-007")
 		if err != nil {
 			log.Printf("Failed to create bot: %v", err)
 			return
