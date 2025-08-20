@@ -5,16 +5,19 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/zuczkows/text-bot-integration/internal/config"
 	"github.com/zuczkows/text-bot-integration/internal/livechat/sdk"
 )
 
 type AppInstallationHandler struct {
 	livechatSDK *sdk.LivechatSDKClient
+	config      config.Config
 }
 
-func NewAppInstallationHandler(liveChatSDK *sdk.LivechatSDKClient) *AppInstallationHandler {
+func NewAppInstallationHandler(liveChatSDK *sdk.LivechatSDKClient, config config.Config) *AppInstallationHandler {
 	return &AppInstallationHandler{
 		livechatSDK: liveChatSDK,
+		config:      config,
 	}
 }
 
@@ -36,8 +39,14 @@ func (h *AppInstallationHandler) AppInstallation(w http.ResponseWriter, r *http.
 			log.Printf("Failed to create bot: %v", err)
 			return
 		}
-
 		log.Printf("Bot created succesfully - ID %s", botResponse.BotID)
+
+		err = h.livechatSDK.SetRoutingStatus("accepting_chats", botResponse.BotID)
+		if err != nil {
+			log.Printf("Failed to set routing status for bot: %v", err)
+			return
+		}
+		log.Printf("Bot - %s status changed to accepting chats", botResponse.BotID)
 	}
 }
 

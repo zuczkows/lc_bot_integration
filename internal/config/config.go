@@ -43,6 +43,7 @@ type Config struct {
 	AccountID     string `json:"account_id"`
 	Addr          string `json:"addr"`
 	ApiUrl        string `json:"api_url"`
+	WebhookUrl    string `json:"webhook_url"`
 }
 
 func ParseConfig(path string) Config {
