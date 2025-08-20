@@ -44,13 +44,30 @@ func (app *BotApplication) Run(mux http.Handler) error {
 
 // Register webhooks once per application - not once every app install
 func (app *BotApplication) SetupAPP() error {
+	registeredWebhooks, err := app.livechatSDK.ListWebhooks()
+	if err != nil {
+		return fmt.Errorf("failed to list webhooks: %v", registeredWebhooks)
+	}
+	existingWebhooks := make(map[string]bool)
+	for _, webhook := range *registeredWebhooks {
+		if webhook.OwnerClientID == app.config.ClientID {
+			existingWebhooks[webhook.Action] = true
+			log.Printf("Found existing webhook: %s for client: %s", webhook.Action, webhook.ID)
+		}
+	}
+
 	webhooks := []string{"incoming_chat", "incoming_event"}
 	for _, action := range webhooks {
+		if existingWebhooks[action] {
+			log.Printf("Webhook %s already exists for client %s, skipping registration", action, app.config.ClientID)
+			continue
+		}
+
 		registerWebhookResponse, err := app.livechatSDK.RegisterWebhook(action, app.config.WebhookUrl)
 		if err != nil {
 			return fmt.Errorf("failed to register webhook %s: %w", action, err)
 		}
-		log.Printf("Webhook incoming_event created succesfully - ID %s", registerWebhookResponse.ID)
+		log.Printf("Webhook %s created successfully - ID %s", action, registerWebhookResponse.ID)
 	}
 	return nil
 }

@@ -64,14 +64,20 @@ type CreateBotResponse struct {
 	Secret string `json:"secret"`
 }
 
-type deleteBotRequest struct {
-	BotID         string `json:"id"`
-	OwnerClientID string `json:"owner_client_id,omitempty"`
-}
-
 type listWebhooksRequest struct {
 	OwnerClientID string `json:"owner_client_id,omitempty"`
 }
+
+// Only few fields - not whole response needed
+type registeredWebhook struct {
+	ID            string `json:"id"`
+	Action        string `json:"action"`
+	URL           string `json:"url"`
+	Type          string `json:"type"`
+	OwnerClientID string `json:"owner_client_id"`
+}
+
+type listWebhooksResponse []registeredWebhook
 
 func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte) ([]byte, error) {
 	c.logger.Info("Making API request",
@@ -173,4 +179,25 @@ func (c *LivechatSDKClient) SetRoutingStatus(status, agentID string) error {
 		return fmt.Errorf("failed to set routing status: %w", err)
 	}
 	return nil
+}
+
+func (c *LivechatSDKClient) ListWebhooks() (*listWebhooksResponse, error) {
+	request := listWebhooksRequest{
+		OwnerClientID: c.clientID,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request")
+	}
+
+	responseBody, err := c.MakeRequest("/configuration/action/list_webhooks", "POST", body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", responseBody)
+	}
+
+	var webhookResponse listWebhooksResponse
+	if err := json.Unmarshal(responseBody, &webhookResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshall response body: %v", err)
+	}
+	return &webhookResponse, nil
 }
