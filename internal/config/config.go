@@ -44,6 +44,7 @@ type Config struct {
 	Addr          string `json:"addr"`
 	ApiUrl        string `json:"api_url"`
 	WebhookUrl    string `json:"webhook_url"`
+	SecretKey     string `json:"secret_key"` // could be secret but to simplify i leave it as string
 }
 
 func ParseConfig(path string) Config {

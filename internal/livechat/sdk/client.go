@@ -7,22 +7,22 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+
+	"github.com/zuczkows/text-bot-integration/internal/config"
 )
 
 type LivechatSDKClient struct {
 	httpClient http.Client
 	header     http.Header
-	url        string
+	config     config.Config
 	logger     *slog.Logger
-	clientID   string
 }
 
-func NewLivechatSDKClient(httpClient http.Client, header http.Header, url string, clientID string, logger *slog.Logger) *LivechatSDKClient {
+func NewLivechatSDKClient(httpClient http.Client, header http.Header, config config.Config, logger *slog.Logger) *LivechatSDKClient {
 	return &LivechatSDKClient{
 		httpClient: httpClient,
 		header:     header,
-		url:        url,
-		clientID:   clientID,
+		config:     config,
 		logger:     logger,
 	}
 }
@@ -102,11 +102,11 @@ type listWebhooksResponse []registeredWebhook
 func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte) ([]byte, error) {
 	c.logger.Info("Making API request",
 		slog.String("method", method),
-		slog.String("url", c.url+path),
+		slog.String("url", c.config.ApiUrl+path),
 		slog.String("request_body", string(body)),
 	)
 
-	req, err := http.NewRequest(http.MethodPost, c.url+path, bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, c.config.ApiUrl+path, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request")
 	}
@@ -140,13 +140,13 @@ func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte)
 func (c *LivechatSDKClient) CreateBot(name string) (*CreateBotResponse, error) {
 	request := createBotRequest{
 		Name:          name,
-		OwnerClientID: c.clientID,
+		OwnerClientID: c.config.ClientID,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request")
 	}
-	responseBody, err := c.MakeRequest("/configuration/action/create_bot", "POST", body)
+	responseBody, err := c.MakeRequest("/configuration/action/create_bot", http.MethodPost, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a request")
 	}
@@ -163,17 +163,17 @@ func (c *LivechatSDKClient) RegisterWebhook(action, url string) (*registerWebhoo
 	request := registerWebhookRequest{
 		Webhook: &Webhook{
 			Action:    action,
-			SecretKey: "xsdhai232",
+			SecretKey: c.config.SecretKey,
 			URL:       url,
 			Type:      "bot",
 		},
-		OwnerClientID: c.clientID,
+		OwnerClientID: c.config.ClientID,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request")
 	}
-	responseBody, err := c.MakeRequest("/configuration/action/register_webhook", "POST", body)
+	responseBody, err := c.MakeRequest("/configuration/action/register_webhook", http.MethodPost, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a request")
 	}
@@ -194,7 +194,7 @@ func (c *LivechatSDKClient) SetRoutingStatus(status, agentID string) error {
 		return fmt.Errorf("failed to marshal request")
 	}
 
-	_, err = c.MakeRequest("/agent/action/set_routing_status", "POST", body)
+	_, err = c.MakeRequest("/agent/action/set_routing_status", http.MethodPost, body)
 	if err != nil {
 		return fmt.Errorf("failed to set routing status: %w", err)
 	}
@@ -203,14 +203,14 @@ func (c *LivechatSDKClient) SetRoutingStatus(status, agentID string) error {
 
 func (c *LivechatSDKClient) ListWebhooks() (*listWebhooksResponse, error) {
 	request := listWebhooksRequest{
-		OwnerClientID: c.clientID,
+		OwnerClientID: c.config.ClientID,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request")
 	}
 
-	responseBody, err := c.MakeRequest("/configuration/action/list_webhooks", "POST", body)
+	responseBody, err := c.MakeRequest("/configuration/action/list_webhooks", http.MethodPost, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", responseBody)
 	}
@@ -225,7 +225,7 @@ func (c *LivechatSDKClient) ListWebhooks() (*listWebhooksResponse, error) {
 func (c *LivechatSDKClient) IssueBotToken(bot_id, secret, organization_id string) (*issueBotTokenResponse, error) {
 	request := issueBotTokenRequest{
 		BotID:          bot_id,
-		ClientID:       c.clientID,
+		ClientID:       c.config.ClientID,
 		Secret:         secret,
 		OrganizationID: organization_id,
 	}
@@ -233,7 +233,7 @@ func (c *LivechatSDKClient) IssueBotToken(bot_id, secret, organization_id string
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request")
 	}
-	responseBody, err := c.MakeRequest("/configuration/action/issue_bot_token", "POST", body)
+	responseBody, err := c.MakeRequest("/configuration/action/issue_bot_token", http.MethodPost, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", responseBody)
 	}
@@ -255,7 +255,7 @@ func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEv
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	responseBody, err := c.MakeRequest("/agent/action/send_event", "POST", body)
+	responseBody, err := c.MakeRequest("/agent/action/send_event", http.MethodPost, body)
 	if err != nil {
 		return nil, err
 	}

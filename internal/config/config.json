@@ -4,5 +4,6 @@
     "account_id": "dcec3efb-ab1e-4ad4-a559-08998b5628c8",
     "addr": ":8080",
     "api_url": "https://api.labs.livechatinc.com/v3.6",
-    "webhook_url": "https://8b4aa56bfe1b.ngrok-free.app/webhook"
+    "webhook_url": "https://8b4aa56bfe1b.ngrok-free.app/webhook",
+    "secret_key": "webhook-secret-key"
 }

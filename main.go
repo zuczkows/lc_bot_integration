@@ -23,12 +23,11 @@ func main() {
 	liveChatSDK := sdk.NewLivechatSDKClient(
 		*http.DefaultClient,
 		headers,
-		cfg.ApiUrl,
-		cfg.ClientID,
+		cfg,
 		logger,
 	)
 	botApplication := server.NewBotApplication(cfg, liveChatSDK)
-	if err := botApplication.SetupAPP(); err != nil {
+	if err := botApplication.SetupApp(); err != nil {
 		log.Fatalf("failed to setup application %v", err)
 	}
 	mux := botApplication.Mount()

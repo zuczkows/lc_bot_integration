@@ -31,7 +31,7 @@ func (bs *BotStore) StoreBotToken(organizationID, token string) {
 
 func (bs *BotStore) GetBotToken(organizationID string) (string, bool) {
 	bs.mu.RLock()
-	defer bs.mu.Unlock()
+	defer bs.mu.RUnlock()
 
 	botToken, exists := bs.tokens[organizationID]
 	if !exists {

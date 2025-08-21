@@ -93,6 +93,8 @@ func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Incoming envet action")
 	case webhook.Action == "incoming_chat":
 		log.Printf("Incoming chat action")
+	default:
+		log.Printf("Webhook not recognized: %v", webhook)
 	}
 
 }

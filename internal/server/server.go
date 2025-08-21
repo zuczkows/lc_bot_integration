@@ -45,7 +45,7 @@ func (app *BotApplication) Run(mux http.Handler) error {
 }
 
 // Register webhooks once per application - not once every app install
-func (app *BotApplication) SetupAPP() error {
+func (app *BotApplication) SetupApp() error {
 	registeredWebhooks, err := app.livechatSDK.ListWebhooks()
 	if err != nil {
 		return fmt.Errorf("failed to list webhooks: %v", registeredWebhooks)
