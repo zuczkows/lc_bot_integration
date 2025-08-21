@@ -38,6 +38,7 @@ func (h *AppInstallationHandler) AppInstallation(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusAccepted)
 
 	if webhook.Event == "application_installed" {
+		log.Printf("Application installed for organizationID: %s", webhook.OrganizationID)
 		botResponse, err := h.livechatSDK.CreateBot("Zuczkows-Bot-007")
 		if err != nil {
 			log.Printf("Failed to create bot: %v", err)
@@ -66,6 +67,6 @@ type AppInstallUninstallWebhook struct {
 	AppID          string `json:"applicationID"`
 	Event          string `json:"event"`
 	LicenseID      int64  `json:"licenseID"`
-	OrganizationID string `json:"organiztionID"`
+	OrganizationID string `json:"organizationID"`
 	ClientID       string `json:"clientID"`
 }

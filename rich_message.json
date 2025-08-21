@@ -1,6 +1,6 @@
 {
     "type": "rich_message",
-    "template_id": "bot_replies",
+    "template_id": "quick_replies",
     "elements": [{
         "title": "Hello, how can I help you?",
         "buttons": [

@@ -4,24 +4,29 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/zuczkows/text-bot-integration/internal/livechat/sdk"
 	"github.com/zuczkows/text-bot-integration/internal/store"
 )
 
 type WebhookHandler struct {
-	botStore *store.BotStore
+	botStore    *store.BotStore
+	livechatSDK *sdk.LivechatSDKClient
 }
 
-func NewWebhookHandler(botStore *store.BotStore) *WebhookHandler {
+func NewWebhookHandler(botStore *store.BotStore, liveChatSDK *sdk.LivechatSDKClient) *WebhookHandler {
 	return &WebhookHandler{
-		botStore: botStore,
+		botStore:    botStore,
+		livechatSDK: liveChatSDK,
 	}
 }
 
 type Webhook struct {
-	Action  string          `json:"action"`
-	Payload json.RawMessage `json:"payload"`
+	Action         string          `json:"action"`
+	Payload        json.RawMessage `json:"payload"`
+	OrganizationID string          `json:"organization_id"`
 }
 
 type Chat struct {
@@ -56,6 +61,13 @@ type eventSpecific struct {
 	Details           json.RawMessage `json:"details"`
 	Version           json.RawMessage `json:"version"`
 }
+type Postback struct {
+	ID       string `json:"id"`
+	ThreadID string `json:"thread_id"`
+	EventID  string `json:"event_id"`
+	Type     string `json:"type"`
+	Value    string `json:"value"`
+}
 
 type Event struct {
 	ID         string    `json:"id,omitempty"`
@@ -71,6 +83,14 @@ type IncomingEvent struct {
 	ChatID   string `json:"chat_id"`
 	ThreadID string `json:"thread_id"`
 	Event    Event  `json:"event"`
+}
+
+func loadRichMessage() (json.RawMessage, error) {
+	data, err := os.ReadFile("rich_message.json")
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
 }
 
 func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
@@ -90,9 +110,78 @@ func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case webhook.Action == "incoming_event":
-		log.Printf("Incoming envet action")
+		log.Printf("Incoming event action")
+		var incomingEvent IncomingEvent
+		if err := json.Unmarshal(webhook.Payload, &incomingEvent); err != nil {
+			log.Printf("Failed to unmarshall icoming event payload %v", err)
+			return
+		}
+		token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
+		if !exists {
+			log.Printf("Bot token does not exists for organizationID: %s", webhook.OrganizationID)
+			return
+		}
+		var postback Postback
+		if err := json.Unmarshal(incomingEvent.Event.Postback, &postback); err != nil {
+			log.Printf("Failed to unmarshal postback: %v", err)
+			return
+		}
+		log.Printf("Postback ID- %s", postback.ID)
+		switch postback.ID {
+		case "transfer_to_agent":
+			log.Printf("transfering to agent...")
+			message := map[string]string{
+				"type": "message",
+				"text": "Understand. I will transfer chat to an agent now.",
+			}
+			token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
+			if !exists {
+				log.Printf("Bot token does not exists for organizationID: %s", webhook.OrganizationID)
+				return
+			}
+			_, err := h.livechatSDK.SendEvent(incomingEvent.ChatID, token, message)
+			if err != nil {
+				log.Printf("Failed to send event: %v", err)
+				return
+			}
+			h.livechatSDK.TransferChat(incomingEvent.ChatID, token)
+		case "continue_chat_with_bot":
+			message := map[string]string{
+				"type": "message",
+				"text": "Super, How can I help you",
+			}
+			_, err := h.livechatSDK.SendEvent(incomingEvent.ChatID, token, message)
+			if err != nil {
+				log.Printf("Failed to send event: %v", err)
+				return
+			}
+		default:
+			log.Printf("Postback ID not configured: %s", postback.ID)
+		}
 	case webhook.Action == "incoming_chat":
 		log.Printf("Incoming chat action")
+		var incomingChat IncomingChat
+		if err := json.Unmarshal(webhook.Payload, &incomingChat); err != nil {
+			log.Printf("Failed to parse incoming chat payload: %v", err)
+			return
+		}
+		richMessage, err := loadRichMessage()
+		if err != nil {
+			log.Printf("failed to load rich message")
+			return
+		}
+		token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
+		if !exists {
+			log.Printf("Bot token does not exists for organizationID: %s", webhook.OrganizationID)
+			return
+		}
+		response, err := h.livechatSDK.SendEvent(incomingChat.Chat.ID, token, richMessage)
+		if err != nil {
+			log.Printf("Failed to send event: %v", err)
+			return
+		}
+
+		log.Printf("Rich message sent successfully, event ID: %s", response.EventID)
 	default:
 		log.Printf("Webhook not recognized: %v", webhook)
 	}

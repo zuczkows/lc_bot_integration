@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
 
@@ -99,7 +100,11 @@ type registeredWebhook struct {
 
 type listWebhooksResponse []registeredWebhook
 
-func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte) ([]byte, error) {
+type transferChatRequest struct {
+	ID string `json:"id"`
+}
+
+func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte, authToken ...string) ([]byte, error) {
 	c.logger.Info("Making API request",
 		slog.String("method", method),
 		slog.String("url", c.config.ApiUrl+path),
@@ -110,7 +115,11 @@ func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request")
 	}
-	req.Header = c.header
+	req.Header = c.header.Clone()
+	if len(authToken) > 0 && authToken[0] != "" {
+		req.Header.Set("Authorization", authToken[0])
+		log.Printf("Making request as a bot with JWT: %s", authToken[0]) //debug log with plain token
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -244,7 +253,7 @@ func (c *LivechatSDKClient) IssueBotToken(bot_id, secret, organization_id string
 	return &botTokenResponse, nil
 }
 
-func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEventResponse, error) {
+func (c *LivechatSDKClient) SendEvent(chatID, token string, event interface{}) (*sendEventResponse, error) {
 	request := sendEventRequest{
 		ChatID: chatID,
 		Event:  event,
@@ -255,7 +264,7 @@ func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEv
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	responseBody, err := c.MakeRequest("/agent/action/send_event", http.MethodPost, body)
+	responseBody, err := c.MakeRequest("/agent/action/send_event", http.MethodPost, body, token)
 	if err != nil {
 		return nil, err
 	}
@@ -266,4 +275,22 @@ func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEv
 	}
 
 	return &sendEventResp, nil
+}
+
+func (c *LivechatSDKClient) TransferChat(chatID, token string) error {
+	request := transferChatRequest{
+		ID: chatID,
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	_, err = c.MakeRequest("/agent/action/transfer_chat", http.MethodPost, body, token)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

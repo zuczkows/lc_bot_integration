@@ -22,7 +22,7 @@ func NewBotApplication(cfg config.Config, sdk *sdk.LivechatSDKClient) *BotApplic
 	botStore := store.NewBotStore()
 	return &BotApplication{
 		config:              cfg,
-		webhookHandler:      handlers.NewWebhookHandler(botStore),
+		webhookHandler:      handlers.NewWebhookHandler(botStore, sdk),
 		installationHandler: handlers.NewAppInstallationHandler(sdk, cfg, botStore),
 		livechatSDK:         sdk,
 	}
