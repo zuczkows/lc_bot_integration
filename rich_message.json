@@ -1,0 +1,23 @@
+{
+    "type": "rich_message",
+    "template_id": "bot_replies",
+    "elements": [{
+        "title": "Hello, how can I help you?",
+        "buttons": [
+            {
+                "type": "message",
+                "text": "I like talking to bot",
+                "postback_id": "continue_chat_with_bot",
+                "user_ids": [],
+                "value": "bot"
+            },
+            {
+                "type": "message",
+                "text": "I prefer to talk with the agent",
+                "postback_id": "transfer_to_agent",
+                "user_ids": [],
+                "value": "agent"
+            }
+        ]
+    }]
+}

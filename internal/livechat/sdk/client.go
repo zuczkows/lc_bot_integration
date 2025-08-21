@@ -68,6 +68,26 @@ type listWebhooksRequest struct {
 	OwnerClientID string `json:"owner_client_id,omitempty"`
 }
 
+type issueBotTokenRequest struct {
+	BotID          string `json:"bot_id"`
+	ClientID       string `json:"client_id"`
+	Secret         string `json:"bot_secret"`
+	OrganizationID string `json:"organization_id"`
+}
+
+type issueBotTokenResponse struct {
+	Token string `json:"token"`
+}
+
+type sendEventRequest struct {
+	ChatID string      `json:"chat_id"`
+	Event  interface{} `json:"event"`
+}
+
+type sendEventResponse struct {
+	EventID string `json:"event_id"`
+}
+
 // Only few fields - not whole response needed
 type registeredWebhook struct {
 	ID            string `json:"id"`
@@ -200,4 +220,50 @@ func (c *LivechatSDKClient) ListWebhooks() (*listWebhooksResponse, error) {
 		return nil, fmt.Errorf("failed to unmarshall response body: %v", err)
 	}
 	return &webhookResponse, nil
+}
+
+func (c *LivechatSDKClient) IssueBotToken(bot_id, secret, organization_id string) (*issueBotTokenResponse, error) {
+	request := issueBotTokenRequest{
+		BotID:          bot_id,
+		ClientID:       c.clientID,
+		Secret:         secret,
+		OrganizationID: organization_id,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request")
+	}
+	responseBody, err := c.MakeRequest("/configuration/action/issue_bot_token", "POST", body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", responseBody)
+	}
+	var botTokenResponse issueBotTokenResponse
+	if err := json.Unmarshal(responseBody, &botTokenResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshall response body: %v", err)
+	}
+	return &botTokenResponse, nil
+}
+
+func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEventResponse, error) {
+	request := sendEventRequest{
+		ChatID: chatID,
+		Event:  event,
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	responseBody, err := c.MakeRequest("/agent/action/send_event", "POST", body)
+	if err != nil {
+		return nil, err
+	}
+
+	var sendEventResp sendEventResponse
+	if err := json.Unmarshal(responseBody, &sendEventResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshall response body: %w", err)
+	}
+
+	return &sendEventResp, nil
 }

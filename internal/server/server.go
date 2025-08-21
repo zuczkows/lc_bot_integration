@@ -8,6 +8,7 @@ import (
 	"github.com/zuczkows/text-bot-integration/internal/config"
 	"github.com/zuczkows/text-bot-integration/internal/handlers"
 	"github.com/zuczkows/text-bot-integration/internal/livechat/sdk"
+	"github.com/zuczkows/text-bot-integration/internal/store"
 )
 
 type BotApplication struct {
@@ -18,10 +19,11 @@ type BotApplication struct {
 }
 
 func NewBotApplication(cfg config.Config, sdk *sdk.LivechatSDKClient) *BotApplication {
+	botStore := store.NewBotStore()
 	return &BotApplication{
 		config:              cfg,
-		webhookHandler:      handlers.NewWebhookHandler(),
-		installationHandler: handlers.NewAppInstallationHandler(sdk, cfg),
+		webhookHandler:      handlers.NewWebhookHandler(botStore),
+		installationHandler: handlers.NewAppInstallationHandler(sdk, cfg, botStore),
 		livechatSDK:         sdk,
 	}
 }
