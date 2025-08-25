@@ -28,10 +28,15 @@ func NewLivechatSDKClient(httpClient http.Client, header http.Header, config con
 }
 
 type Webhook struct {
-	Action    string `json:"action"`
-	SecretKey string `json:"secret_key"`
-	URL       string `json:"url"`
-	Type      string `json:"type"`
+	Action    string          `json:"action"`
+	SecretKey string          `json:"secret_key"`
+	URL       string          `json:"url"`
+	Type      string          `json:"type"`
+	Filters   *WebhookFilters `json:"filters,omitempty"`
+}
+
+type WebhookFilters struct {
+	AuthorType string `json:"author_type,omitempty"`
 }
 
 type setRoutingStatusRequest struct {
@@ -99,29 +104,41 @@ type registeredWebhook struct {
 
 type listWebhooksResponse []registeredWebhook
 
-func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte) ([]byte, error) {
+type transferChatRequest struct {
+	ID string `json:"id"`
+}
+
+// authToken param is a hack to simplify this app and make request
+// as a bot with JWT by overwritting auth header
+// We agreed to that here but it should be handled similarly to how it’s done
+// in the backend tests repo where the bot and the agent are two different
+// instances of the SDK
+func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte, authToken ...string) ([]byte, error) {
 	c.logger.Info("Making API request",
 		slog.String("method", method),
 		slog.String("url", c.config.ApiUrl+path),
 		slog.String("request_body", string(body)),
 	)
 
-	req, err := http.NewRequest(http.MethodPost, c.config.ApiUrl+path, bytes.NewBuffer(body))
+	req, err := http.NewRequest(method, c.config.ApiUrl+path, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request")
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header = c.header
+	req.Header = c.header.Clone()
+	if len(authToken) > 0 && authToken[0] != "" {
+		req.Header.Set("Authorization", authToken[0])
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request failed")
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		c.logger.Error("Failed to read response body")
-		return nil, fmt.Errorf("failed to read response")
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -142,44 +159,47 @@ func (c *LivechatSDKClient) CreateBot(name string) (*CreateBotResponse, error) {
 		Name:          name,
 		OwnerClientID: c.config.ClientID,
 	}
+
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request")
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
+
 	responseBody, err := c.MakeRequest("/configuration/action/create_bot", http.MethodPost, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create a request")
+		return nil, err
 	}
 
 	var createBotResp CreateBotResponse
 	if err := json.Unmarshal(responseBody, &createBotResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
 	return &createBotResp, nil
 }
 
-func (c *LivechatSDKClient) RegisterWebhook(action, url string) (*registerWebhookResponse, error) {
+func (c *LivechatSDKClient) RegisterWebhook(action, url string, filters *WebhookFilters) (*registerWebhookResponse, error) {
 	request := registerWebhookRequest{
 		Webhook: &Webhook{
 			Action:    action,
 			SecretKey: c.config.SecretKey,
 			URL:       url,
 			Type:      "bot",
+			Filters:   filters,
 		},
 		OwnerClientID: c.config.ClientID,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request")
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 	responseBody, err := c.MakeRequest("/configuration/action/register_webhook", http.MethodPost, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create a request")
+		return nil, err
 	}
 	var registerWebhookResp registerWebhookResponse
 	if err := json.Unmarshal(responseBody, &registerWebhookResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	return &registerWebhookResp, nil
 }
@@ -191,7 +211,7 @@ func (c *LivechatSDKClient) SetRoutingStatus(status, agentID string) error {
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request")
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	_, err = c.MakeRequest("/agent/action/set_routing_status", http.MethodPost, body)
@@ -207,17 +227,17 @@ func (c *LivechatSDKClient) ListWebhooks() (*listWebhooksResponse, error) {
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request")
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	responseBody, err := c.MakeRequest("/configuration/action/list_webhooks", http.MethodPost, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", responseBody)
+		return nil, err
 	}
 
 	var webhookResponse listWebhooksResponse
 	if err := json.Unmarshal(responseBody, &webhookResponse); err != nil {
-		return nil, fmt.Errorf("failed to unmarshall response body: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	return &webhookResponse, nil
 }
@@ -239,12 +259,12 @@ func (c *LivechatSDKClient) IssueBotToken(bot_id, secret, organization_id string
 	}
 	var botTokenResponse issueBotTokenResponse
 	if err := json.Unmarshal(responseBody, &botTokenResponse); err != nil {
-		return nil, fmt.Errorf("failed to unmarshall response body: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal response body: %v", err)
 	}
 	return &botTokenResponse, nil
 }
 
-func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEventResponse, error) {
+func (c *LivechatSDKClient) SendEvent(chatID, token string, event interface{}) (*sendEventResponse, error) {
 	request := sendEventRequest{
 		ChatID: chatID,
 		Event:  event,
@@ -255,15 +275,33 @@ func (c *LivechatSDKClient) SendEvent(chatID string, event interface{}) (*sendEv
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	responseBody, err := c.MakeRequest("/agent/action/send_event", http.MethodPost, body)
+	responseBody, err := c.MakeRequest("/agent/action/send_event", http.MethodPost, body, token)
 	if err != nil {
 		return nil, err
 	}
 
 	var sendEventResp sendEventResponse
 	if err := json.Unmarshal(responseBody, &sendEventResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshall response body: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
 
 	return &sendEventResp, nil
+}
+
+func (c *LivechatSDKClient) TransferChat(chatID, token string) error {
+	request := transferChatRequest{
+		ID: chatID,
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	_, err = c.MakeRequest("/agent/action/transfer_chat", http.MethodPost, body, token)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
