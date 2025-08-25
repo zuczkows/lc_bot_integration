@@ -94,14 +94,20 @@ func (app *BotApplication) SetupApp() error {
 		}
 	}
 
-	webhooks := []string{"incoming_chat", "incoming_event"}
-	for _, action := range webhooks {
+	webhookConfigs := map[string]*sdk.WebhookFilters{
+		"incoming_chat": nil, // allowed only for the incoming_event and event_updated actions
+		"incoming_event": {
+			AuthorType: "customer",
+		},
+	}
+
+	for action, filters := range webhookConfigs {
 		if existingWebhooks[action] {
 			log.Printf("Webhook %s already exists for client %s, skipping registration", action, app.config.ClientID)
 			continue
 		}
 
-		registerWebhookResponse, err := app.livechatSDK.RegisterWebhook(action, app.config.WebhookUrl)
+		registerWebhookResponse, err := app.livechatSDK.RegisterWebhook(action, app.config.WebhookUrl, filters)
 		if err != nil {
 			return fmt.Errorf("failed to register webhook %s: %w", action, err)
 		}

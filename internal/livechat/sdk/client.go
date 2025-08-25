@@ -28,10 +28,15 @@ func NewLivechatSDKClient(httpClient http.Client, header http.Header, config con
 }
 
 type Webhook struct {
-	Action    string `json:"action"`
-	SecretKey string `json:"secret_key"`
-	URL       string `json:"url"`
-	Type      string `json:"type"`
+	Action    string          `json:"action"`
+	SecretKey string          `json:"secret_key"`
+	URL       string          `json:"url"`
+	Type      string          `json:"type"`
+	Filters   *WebhookFilters `json:"filters,omitempty"`
+}
+
+type WebhookFilters struct {
+	AuthorType string `json:"author_type,omitempty"`
 }
 
 type setRoutingStatusRequest struct {
@@ -103,6 +108,11 @@ type transferChatRequest struct {
 	ID string `json:"id"`
 }
 
+// authToken param is a hack to simplify this app and make request
+// as a bot with JWT by overwritting auth header
+// We agreed to that here but it should be handled similarly to how it’s done
+// in the backend tests repo where the bot and the agent are two different
+// instances of the SDK
 func (c *LivechatSDKClient) MakeRequest(path string, method string, body []byte, authToken ...string) ([]byte, error) {
 	c.logger.Info("Making API request",
 		slog.String("method", method),
@@ -168,13 +178,14 @@ func (c *LivechatSDKClient) CreateBot(name string) (*CreateBotResponse, error) {
 	return &createBotResp, nil
 }
 
-func (c *LivechatSDKClient) RegisterWebhook(action, url string) (*registerWebhookResponse, error) {
+func (c *LivechatSDKClient) RegisterWebhook(action, url string, filters *WebhookFilters) (*registerWebhookResponse, error) {
 	request := registerWebhookRequest{
 		Webhook: &Webhook{
 			Action:    action,
 			SecretKey: c.config.SecretKey,
 			URL:       url,
 			Type:      "bot",
+			Filters:   filters,
 		},
 		OwnerClientID: c.config.ClientID,
 	}
