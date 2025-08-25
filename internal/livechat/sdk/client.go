@@ -248,7 +248,7 @@ func (c *LivechatSDKClient) IssueBotToken(bot_id, secret, organization_id string
 	}
 	var botTokenResponse issueBotTokenResponse
 	if err := json.Unmarshal(responseBody, &botTokenResponse); err != nil {
-		return nil, fmt.Errorf("failed to unmarshall response body: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal response body: %v", err)
 	}
 	return &botTokenResponse, nil
 }
@@ -271,7 +271,7 @@ func (c *LivechatSDKClient) SendEvent(chatID, token string, event interface{}) (
 
 	var sendEventResp sendEventResponse
 	if err := json.Unmarshal(responseBody, &sendEventResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshall response body: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
 
 	return &sendEventResp, nil

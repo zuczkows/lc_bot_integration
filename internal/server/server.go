@@ -65,7 +65,7 @@ func (app *BotApplication) Run(mux http.Handler) error {
 	case err := <-serverError:
 		log.Printf("Server error: %v", err)
 	case sig := <-stop:
-		log.Printf("Rceived shutdown signal: %v", sig)
+		log.Printf("Received shutdown signal: %v", sig)
 	}
 
 	log.Println("Server is shutting down...")

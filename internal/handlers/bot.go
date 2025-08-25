@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/zuczkows/text-bot-integration/internal/livechat/sdk"
+	"github.com/zuczkows/text-bot-integration/internal/messages"
 	"github.com/zuczkows/text-bot-integration/internal/store"
 )
 
@@ -86,12 +86,9 @@ type IncomingEvent struct {
 	Event    Event  `json:"event"`
 }
 
-func loadRichMessage() (json.RawMessage, error) {
-	data, err := os.ReadFile("rich_message.json")
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(data), nil
+type EventRequest struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
@@ -109,11 +106,13 @@ func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case webhook.Action == "incoming_event":
 		if err := h.handleIncomingEvent(webhook); err != nil {
+			log.Printf("Failed to handle incoming event: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	case webhook.Action == "incoming_chat":
 		if err := h.handleIncomingChat(webhook); err != nil {
+			log.Printf("Failed to handle incoming event: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -127,7 +126,7 @@ func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
 func (h *WebhookHandler) handleIncomingEvent(webhook Webhook) error {
 	var incomingEvent IncomingEvent
 	if err := json.Unmarshal(webhook.Payload, &incomingEvent); err != nil {
-		return fmt.Errorf("failed to unmarshall incoming event payload: %w", err)
+		return fmt.Errorf("failed to unmarshal incoming event payload: %w", err)
 	}
 	token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
 	if !exists {
@@ -140,21 +139,20 @@ func (h *WebhookHandler) handleIncomingEvent(webhook Webhook) error {
 	log.Printf("Postback ID- %s", postback.ID)
 	switch postback.ID {
 	case "transfer_to_agent":
-		return h.handleTransferToAgent(incomingEvent, token)
+		return h.transferToAgent(incomingEvent, token)
 	case "continue_chat_with_bot":
-		return h.handleContinueWithBot(incomingEvent, token)
+		return h.continueWithBot(incomingEvent, token)
 	default:
 		return fmt.Errorf("Postback ID not configured %s", postback.ID)
 	}
-	return nil
 }
 
-func (h *WebhookHandler) handleTransferToAgent(event IncomingEvent, token string) error {
-	message := map[string]string{
-		"type": "message",
-		"text": "Understand. I will transfer chat to an agent now.",
+func (h *WebhookHandler) transferToAgent(event IncomingEvent, token string) error {
+	eventRequest := EventRequest{
+		Type: "message",
+		Text: "Understand. I will transfer chat to an agent now.",
 	}
-	if _, err := h.livechatSDK.SendEvent(event.ChatID, token, message); err != nil {
+	if _, err := h.livechatSDK.SendEvent(event.ChatID, token, eventRequest); err != nil {
 		return fmt.Errorf("failed to send transfer message: %w", err)
 	}
 	if err := h.livechatSDK.TransferChat(event.ChatID, token); err != nil {
@@ -163,12 +161,32 @@ func (h *WebhookHandler) handleTransferToAgent(event IncomingEvent, token string
 	return nil
 }
 
-func (h *WebhookHandler) handleContinueWithBot(event IncomingEvent, token string) error {
-	message := map[string]string{
-		"type": "message",
-		"text": "Super, How can I help you",
+func (h *WebhookHandler) continueWithBot(event IncomingEvent, token string) error {
+	buttons := []messages.Button{
+		{
+			Type:       "message",
+			Text:       "I'd like to book a visit",
+			PostbackID: "book_visit",
+			UserIDs:    []string{},
+			Value:      "visit",
+		},
+		{
+			Type:       "message",
+			Text:       "I'd like to cancel a visit",
+			PostbackID: "cancel_visit",
+			UserIDs:    []string{},
+			Value:      "cancel",
+		},
+		{
+			Type:       "message",
+			Text:       "I'd like to reschedule a visit",
+			PostbackID: "reschedule_visit",
+			UserIDs:    []string{},
+			Value:      "reschedule",
+		},
 	}
-	if _, err := h.livechatSDK.SendEvent(event.ChatID, token, message); err != nil {
+	richMessage := messages.NewQuickReplies("Super, How can I help you?", buttons)
+	if _, err := h.livechatSDK.SendEvent(event.ChatID, token, richMessage); err != nil {
 		return fmt.Errorf("failed to send continue message: %w", err)
 	}
 
@@ -180,10 +198,23 @@ func (h *WebhookHandler) handleIncomingChat(webhook Webhook) error {
 	if err := json.Unmarshal(webhook.Payload, &incomingChat); err != nil {
 		return fmt.Errorf("failed to parse incoming chat payload %w", err)
 	}
-	richMessage, err := loadRichMessage()
-	if err != nil {
-		return fmt.Errorf("failed to get rich message: %w", err)
+	buttons := []messages.Button{
+		{
+			Type:       "message",
+			Text:       "I like talking to bot",
+			PostbackID: "continue_chat_with_bot",
+			UserIDs:    []string{},
+			Value:      "bot",
+		},
+		{
+			Type:       "message",
+			Text:       "I prefer to talk with the agent",
+			PostbackID: "transfer_to_agent",
+			UserIDs:    []string{},
+			Value:      "agent",
+		},
 	}
+	richMessage := messages.NewQuickReplies("Hello, how can I help you?", buttons)
 	token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
 	if !exists {
 		return fmt.Errorf("bot token does not exist for organizationID: %s", webhook.OrganizationID)
