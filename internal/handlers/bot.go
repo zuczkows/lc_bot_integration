@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -95,95 +96,103 @@ func loadRichMessage() (json.RawMessage, error) {
 
 func (h *WebhookHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-
 	var webhook Webhook
 
 	if err := json.NewDecoder(r.Body).Decode(&webhook); err != nil {
 		log.Printf("Error decoding webhook JSON: %v", err)
 		return
 	}
-
 	defer r.Body.Close()
 
 	log.Printf("Received webhook: %s, payload %s", webhook.Action, string(webhook.Payload))
 
 	switch {
 	case webhook.Action == "incoming_event":
-		log.Printf("Incoming event action")
-		var incomingEvent IncomingEvent
-		if err := json.Unmarshal(webhook.Payload, &incomingEvent); err != nil {
-			log.Printf("Failed to unmarshall icoming event payload %v", err)
+		if err := h.handleIncomingEvent(webhook); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
 			return
-		}
-		token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
-		if !exists {
-			log.Printf("Bot token does not exists for organizationID: %s", webhook.OrganizationID)
-			return
-		}
-		var postback Postback
-		if err := json.Unmarshal(incomingEvent.Event.Postback, &postback); err != nil {
-			log.Printf("Failed to unmarshal postback: %v", err)
-			return
-		}
-		log.Printf("Postback ID- %s", postback.ID)
-		switch postback.ID {
-		case "transfer_to_agent":
-			log.Printf("transfering to agent...")
-			message := map[string]string{
-				"type": "message",
-				"text": "Understand. I will transfer chat to an agent now.",
-			}
-			token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
-			if !exists {
-				log.Printf("Bot token does not exists for organizationID: %s", webhook.OrganizationID)
-				return
-			}
-			_, err := h.livechatSDK.SendEvent(incomingEvent.ChatID, token, message)
-			if err != nil {
-				log.Printf("Failed to send event: %v", err)
-				return
-			}
-			h.livechatSDK.TransferChat(incomingEvent.ChatID, token)
-		case "continue_chat_with_bot":
-			message := map[string]string{
-				"type": "message",
-				"text": "Super, How can I help you",
-			}
-			_, err := h.livechatSDK.SendEvent(incomingEvent.ChatID, token, message)
-			if err != nil {
-				log.Printf("Failed to send event: %v", err)
-				return
-			}
-		default:
-			log.Printf("Postback ID not configured: %s", postback.ID)
 		}
 	case webhook.Action == "incoming_chat":
-		log.Printf("Incoming chat action")
-		var incomingChat IncomingChat
-		if err := json.Unmarshal(webhook.Payload, &incomingChat); err != nil {
-			log.Printf("Failed to parse incoming chat payload: %v", err)
+		if err := h.handleIncomingChat(webhook); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		richMessage, err := loadRichMessage()
-		if err != nil {
-			log.Printf("failed to load rich message")
-			return
-		}
-		token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
-		if !exists {
-			log.Printf("Bot token does not exists for organizationID: %s", webhook.OrganizationID)
-			return
-		}
-		response, err := h.livechatSDK.SendEvent(incomingChat.Chat.ID, token, richMessage)
-		if err != nil {
-			log.Printf("Failed to send event: %v", err)
-			return
-		}
-
-		log.Printf("Rich message sent successfully, event ID: %s", response.EventID)
 	default:
 		log.Printf("Webhook not recognized: %v", webhook)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *WebhookHandler) handleIncomingEvent(webhook Webhook) error {
+	var incomingEvent IncomingEvent
+	if err := json.Unmarshal(webhook.Payload, &incomingEvent); err != nil {
+		return fmt.Errorf("failed to unmarshall incoming event payload: %w", err)
+	}
+	token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
+	if !exists {
+		return fmt.Errorf("bot token does not exists for organizationID: %s", webhook.OrganizationID)
+	}
+	var postback Postback
+	if err := json.Unmarshal(incomingEvent.Event.Postback, &postback); err != nil {
+		return fmt.Errorf("failed to unmarshal postback: %w", err)
+	}
+	log.Printf("Postback ID- %s", postback.ID)
+	switch postback.ID {
+	case "transfer_to_agent":
+		return h.handleTransferToAgent(incomingEvent, token)
+	case "continue_chat_with_bot":
+		return h.handleContinueWithBot(incomingEvent, token)
+	default:
+		return fmt.Errorf("Postback ID not configured %s", postback.ID)
+	}
+	return nil
+}
+
+func (h *WebhookHandler) handleTransferToAgent(event IncomingEvent, token string) error {
+	message := map[string]string{
+		"type": "message",
+		"text": "Understand. I will transfer chat to an agent now.",
+	}
+	if _, err := h.livechatSDK.SendEvent(event.ChatID, token, message); err != nil {
+		return fmt.Errorf("failed to send transfer message: %w", err)
+	}
+	if err := h.livechatSDK.TransferChat(event.ChatID, token); err != nil {
+		return fmt.Errorf("failed to transfer chat: %w", err)
+	}
+	return nil
+}
+
+func (h *WebhookHandler) handleContinueWithBot(event IncomingEvent, token string) error {
+	message := map[string]string{
+		"type": "message",
+		"text": "Super, How can I help you",
+	}
+	if _, err := h.livechatSDK.SendEvent(event.ChatID, token, message); err != nil {
+		return fmt.Errorf("failed to send continue message: %w", err)
 	}
 
+	return nil
+}
+
+func (h *WebhookHandler) handleIncomingChat(webhook Webhook) error {
+	var incomingChat IncomingChat
+	if err := json.Unmarshal(webhook.Payload, &incomingChat); err != nil {
+		return fmt.Errorf("failed to parse incoming chat payload %w", err)
+	}
+	richMessage, err := loadRichMessage()
+	if err != nil {
+		return fmt.Errorf("failed to get rich message: %w", err)
+	}
+	token, exists := h.botStore.GetBotToken(webhook.OrganizationID)
+	if !exists {
+		return fmt.Errorf("bot token does not exist for organizationID: %s", webhook.OrganizationID)
+	}
+	response, err := h.livechatSDK.SendEvent(incomingChat.Chat.ID, token, richMessage)
+	if err != nil {
+		return fmt.Errorf("failed to send event: %w", err)
+	}
+
+	log.Printf("Rich message sent successfully, event ID: %s", response.EventID)
+	return nil
 }

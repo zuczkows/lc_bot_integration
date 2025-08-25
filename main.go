@@ -31,6 +31,8 @@ func main() {
 		log.Fatalf("failed to setup application %v", err)
 	}
 	mux := botApplication.Mount()
-	botApplication.Run(mux)
+	if err := botApplication.Run(mux); err != nil {
+		log.Fatalf("server failed: %v", err)
+	}
 
 }
